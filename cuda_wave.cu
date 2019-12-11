@@ -90,7 +90,7 @@ __device__ void do_math(int idx, float *values_d, float *oldval_d, float *newval
    dx = 1.0;
    tau = (c * dtime / dx);
    sqtau = tau * tau;
-   newval_d[idx] = (2.0 * values_d[idx]) - oldval_d[idx] + (sqtau *  (-2.0)*values_d[idx]);
+   newval_d[idx] = __fadd_rd(__fsub_rd(__fmul_rd(2.0, values_d[idx]), oldval_d[idx]), __fmul_rd(__fmul_rd(sqtau, (-2.0)), values_d[idx]));
 }
 
 /**********************************************************************
@@ -98,19 +98,20 @@ __device__ void do_math(int idx, float *values_d, float *oldval_d, float *newval
  *********************************************************************/
 __global__ void vecUpdate(int *nsteps_d, int *tpoints_d, float *values_d, float *oldval_d, float *newval_d)
 {
-   int idx = threadIdx.x + 1;
+   int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
    // Update values for each time step
-   int i;
-   for (i=1; i<=*nsteps_d; i++) {
-      // Update poitns along line for this time step
-      if ((idx==1) || (idx==*tpoints_d))
-         newval_d[idx] = 0.0;
-      else
-         do_math(idx, values_d, oldval_d, newval_d);
+   if (idx <= *tpoints_d) {
+      for (int i=1; i<=*nsteps_d; i++) {
+         // Update poitns along line for this time step
+         if ((idx==1) || (idx==*tpoints_d))
+            newval_d[idx] = 0.0;
+         else
+            do_math(idx, values_d, oldval_d, newval_d);
 
-      oldval_d[idx] = values_d[idx];
-      values_d[idx] = newval_d[idx];
+         oldval_d[idx] = values_d[idx];
+         values_d[idx] = newval_d[idx];
+      }
    }
 }
 
@@ -134,7 +135,9 @@ void update()
    cudaMalloc(&newval_d, size);
 
    // Launch device computation threads
-   vecUpdate<<<1, tpoints>>>(nsteps_d, tpoints_d, values_d, oldval_d, newval_d);
+   int block_size = 256;
+   int grid_size = (tpoints+block_size-1)/block_size;
+   vecUpdate<<<grid_size, block_size>>>(nsteps_d, tpoints_d, values_d, oldval_d, newval_d);
 
    // Transfer values back to the host
    cudaMemcpy(values, values_d, size, cudaMemcpyDeviceToHost);
