@@ -96,30 +96,6 @@ __device__ void do_math(int idx, float *values_d, float *oldval_d, float *newval
 /**********************************************************************
  *     Update all values along line a specified number of times
  *********************************************************************/
-
-// void update()
-// {
-//    int i, j;
-
-//    /* Update values for each time step */
-//    for (i = 1; i<= nsteps; i++) {
-//       /* Update points along line for this time step */
-//       for (j = 1; j <= tpoints; j++) {
-//          /* global endpoints */
-//          if ((j == 1) || (j  == tpoints))
-//             newval[j] = 0.0;
-//          else
-//             do_math(j);
-//       }
-
-//       /* Update old values with new values */
-//       for (j = 1; j <= tpoints; j++) {
-//          oldval[j] = values[j];
-//          values[j] = newval[j];
-//       }
-//    }
-// }
-
 __global__ void vecUpdate(int *nsteps_d, int *tpoints_d, float *values_d, float *oldval_d, float *newval_d)
 {
    int idx = threadIdx.x + 1;
