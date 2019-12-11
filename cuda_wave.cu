@@ -81,7 +81,7 @@ void init_line(void)
 /**********************************************************************
  *      Calculate new values using wave equation
  *********************************************************************/
-void do_math(int i)
+__device__ void do_math(int idx, float *values_d, float *oldval_d, float *newval_d)
 {
    float dtime, c, dx, tau, sqtau;
 
@@ -90,33 +90,83 @@ void do_math(int i)
    dx = 1.0;
    tau = (c * dtime / dx);
    sqtau = tau * tau;
-   newval[i] = (2.0 * values[i]) - oldval[i] + (sqtau *  (-2.0)*values[i]);
+   newval_d[idx] = (2.0 * values_d[idx]) - oldval_d[idx] + (sqtau *  (-2.0)*values_d[idx]);
 }
 
 /**********************************************************************
  *     Update all values along line a specified number of times
  *********************************************************************/
+
+// void update()
+// {
+//    int i, j;
+
+//    /* Update values for each time step */
+//    for (i = 1; i<= nsteps; i++) {
+//       /* Update points along line for this time step */
+//       for (j = 1; j <= tpoints; j++) {
+//          /* global endpoints */
+//          if ((j == 1) || (j  == tpoints))
+//             newval[j] = 0.0;
+//          else
+//             do_math(j);
+//       }
+
+//       /* Update old values with new values */
+//       for (j = 1; j <= tpoints; j++) {
+//          oldval[j] = values[j];
+//          values[j] = newval[j];
+//       }
+//    }
+// }
+
+__global__ void vecUpdate(int *nsteps_d, int *tpoints_d, float *values_d, float *oldval_d, float *newval_d)
+{
+   int idx = threadIdx.x + 1;
+
+   // Update values for each time step
+   int i;
+   for (i=1; i<=*nsteps_d; i++) {
+      // Update poitns along line for this time step
+      if ((idx==1) || (idx==*tpoints_d))
+         newval_d[idx] = 0.0;
+      else
+         do_math(idx, values_d, oldval_d, newval_d);
+
+      oldval_d[idx] = values_d[idx];
+      values_d[idx] = newval_d[idx];
+   }
+}
+
 void update()
 {
-   int i, j;
+   int size = (tpoints+2)*sizeof(float);
+   int *nsteps_d, *tpoints_d;
+   float *values_d, *oldval_d, *newval_d;
 
-   /* Update values for each time step */
-   for (i = 1; i<= nsteps; i++) {
-      /* Update points along line for this time step */
-      for (j = 1; j <= tpoints; j++) {
-         /* global endpoints */
-         if ((j == 1) || (j  == tpoints))
-            newval[j] = 0.0;
-         else
-            do_math(j);
-      }
+   // Transfer nsteps, tpoints, values and oldval to the device
+   cudaMalloc(&nsteps_d, sizeof(int));
+   cudaMemcpy(nsteps_d, &nsteps, sizeof(int), cudaMemcpyHostToDevice);
+   cudaMalloc(&tpoints_d, sizeof(int));
+   cudaMemcpy(tpoints_d, &tpoints, sizeof(int), cudaMemcpyHostToDevice);
+   cudaMalloc(&values_d, size);
+   cudaMemcpy(values_d, values, size, cudaMemcpyHostToDevice);
+   cudaMalloc(&oldval_d, size);
+   cudaMemcpy(oldval_d, oldval, size, cudaMemcpyHostToDevice);
 
-      /* Update old values with new values */
-      for (j = 1; j <= tpoints; j++) {
-         oldval[j] = values[j];
-         values[j] = newval[j];
-      }
-   }
+   // Allocate newval on the device
+   cudaMalloc(&newval_d, size);
+
+   // Launch device computation threads
+   vecUpdate<<<1, tpoints>>>(nsteps_d, tpoints_d, values_d, oldval_d, newval_d);
+
+   // Transfer values back to the host
+   cudaMemcpy(values, values_d, size, cudaMemcpyDeviceToHost);
+
+   // Free device memory
+   cudaFree(values_d);
+   cudaFree(oldval_d);
+   cudaFree(newval_d);
 }
 
 /**********************************************************************
